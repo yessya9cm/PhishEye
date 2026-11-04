@@ -8,6 +8,8 @@ from urllib.parse import urlsplit, unquote
 
 # Инициализация Flask (Vercel ищет переменную "app")
 app = Flask(__name__)
+from flask_cors import CORS
+CORS(app)
 
 # Загрузка модели
 print("Загружаем модель PhishEye...")
