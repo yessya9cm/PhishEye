@@ -1,4 +1,4 @@
-Flask
+Flask==3.0.3
 joblib==1.6.0
 numpy==2.5.4
 scipy==1.18.1
