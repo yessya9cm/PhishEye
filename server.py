@@ -3,13 +3,13 @@ import joblib
 import ipaddress
 import re
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from urllib.parse import urlsplit, unquote
 
-# 1. Инициализация Flask (Vercel ищет именно эту переменную "app")
+# Инициализация Flask (Vercel ищет переменную "app")
 app = Flask(__name__)
 
-# 2. Загрузка модели (с правильным путем для Vercel)
+# Загрузка модели
 print("Загружаем модель PhishEye...")
 model_path = os.path.join(os.path.dirname(__file__), "phisheye_hybrid_model_hardnegatives.pkl")
 model = joblib.load(model_path)
@@ -101,13 +101,12 @@ def analyze_url(url):
 
     return findings
 
-
-# 3. Главная страница (чтобы не было ошибки 404 при заходе на сайт)
+# Раздача главной страницы (вашего index.html)
 @app.route('/')
 def home():
-    return "PhishEye API работает. Отправьте POST запрос на /predict с JSON {'url': 'http://example.com'}"
+    return send_from_directory('.', 'index.html')
 
-# 4. Эндпоинт для предсказания
+# Эндпоинт для предсказания
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
@@ -165,6 +164,5 @@ def predict():
         print("Ошибка анализа:", error)
         return jsonify({"error": "Не удалось выполнить анализ ссылки."}), 500
 
-# 5. Блок для локального запуска (на Vercel он игнорируется)
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000)
