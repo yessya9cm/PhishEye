@@ -1,0 +1,1128 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PhishEye — URL Security Analysis</title>
+
+<style>
+:root {
+    --bg: #080c0f;
+    --panel: #10191d;
+    --border: #26383d;
+    --text: #edf4f4;
+    --muted: #84999d;
+    --green: #48dec4;
+    --red: #ff6572;
+    --amber: #e8b45c;
+    --blue: #66aaff;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    min-height: 100vh;
+    background:
+        radial-gradient(ellipse at 55% 45%, #10272b 0%, transparent 55%),
+        var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overflow-x: hidden;
+}
+
+header {
+    height: 76px;
+    padding: 0 7%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #ffffff12;
+    position: relative;
+    z-index: 5;
+}
+
+.logo {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -1px;
+}
+
+.logo span {
+    color: var(--green);
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 12px var(--green);
+}
+
+/* BACKGROUND NETWORK SPHERE */
+
+.globe-background {
+    position: absolute;
+    z-index: 0;
+    top: 75px;
+    left: 50%;
+    width: min(1050px, 95vw);
+    height: min(1050px, 95vw);
+    transform: translateX(-39%);
+    pointer-events: none;
+    opacity: .65;
+    -webkit-mask-image: radial-gradient(
+        circle,
+        black 35%,
+        rgba(0,0,0,.8) 62%,
+        transparent 78%
+    );
+    mask-image: radial-gradient(
+        circle,
+        black 35%,
+        rgba(0,0,0,.8) 62%,
+        transparent 78%
+    );
+}
+
+#globeCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+main {
+    position: relative;
+    z-index: 2;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 110px 22px 90px;
+    text-align: center;
+}
+
+.eyebrow {
+    color: var(--green);
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+}
+
+h1 {
+    font-size: clamp(42px, 8vw, 72px);
+    line-height: 1.05;
+    letter-spacing: -4px;
+    text-shadow: 0 3px 30px #080c0f;
+}
+
+h1 span {
+    color: var(--green);
+}
+
+.intro {
+    max-width: 540px;
+    margin: 23px auto 42px;
+    color: #a0b1b4;
+    font-size: 14px;
+    line-height: 1.8;
+    text-shadow: 0 2px 15px #080c0f;
+}
+
+.scanner {
+    max-width: 690px;
+    margin: 0 auto;
+    padding: 8px;
+    display: flex;
+    gap: 10px;
+    background: rgba(13, 23, 27, .94);
+    border: 1px solid #365157;
+    border-radius: 12px;
+    box-shadow: 0 12px 60px #0008;
+    transition: .25s;
+}
+
+.scanner:focus-within {
+    border-color: var(--green);
+    box-shadow: 0 0 30px #48dec420, 0 12px 60px #0009;
+}
+
+input {
+    flex: 1;
+    min-width: 0;
+    padding: 15px;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 14px;
+}
+
+input::placeholder {
+    color: #718589;
+}
+
+button {
+    padding: 0 23px;
+    border: none;
+    border-radius: 8px;
+    background: var(--green);
+    color: #071412;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: .2s;
+}
+
+button:hover {
+    background: #7af1dd;
+    box-shadow: 0 0 20px #48dec444;
+    transform: translateY(-1px);
+}
+
+button:disabled {
+    opacity: .6;
+    cursor: wait;
+    transform: none;
+}
+
+.hint {
+    margin-top: 13px;
+    color: #819194;
+    font-size: 11px;
+}
+
+/* RESULTS */
+
+.result {
+    display: none;
+    margin: 35px auto 0;
+    max-width: 690px;
+    text-align: left;
+    animation: appear .4s ease;
+}
+
+.result.show {
+    display: block;
+}
+
+.verdict {
+    padding: 25px;
+    background: rgba(16, 25, 29, .97);
+    border: 1px solid var(--border);
+    border-radius: 13px;
+}
+
+.verdict-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+}
+
+.section-label {
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.verdict-badge {
+    padding: 7px 10px;
+    border-radius: 5px;
+    background: #ff737d18;
+    color: var(--red);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+.verdict-badge.safe {
+    background: #48dec418;
+    color: var(--green);
+}
+
+.verdict-title {
+    margin-top: 22px;
+    font-size: 25px;
+    font-weight: 750;
+    line-height: 1.3;
+}
+
+.verdict-title.danger {
+    color: var(--red);
+}
+
+.verdict-title.safe {
+    color: var(--green);
+}
+
+.verdict-message {
+    margin-top: 10px;
+    color: #a2b3b6;
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+.score-block {
+    margin-top: 25px;
+    padding-top: 22px;
+    border-top: 1px solid #ffffff12;
+}
+
+.score-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.score-heading span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.score-heading strong {
+    font-size: 22px;
+}
+
+.score-track {
+    height: 7px;
+    margin-top: 13px;
+    overflow: hidden;
+    background: #26363a;
+    border-radius: 10px;
+}
+
+.score-fill {
+    width: 0;
+    height: 100%;
+    background: var(--red);
+    border-radius: 10px;
+    transition: width .8s ease;
+}
+
+.score-fill.safe {
+    background: var(--green);
+}
+
+.score-note {
+    margin-top: 10px;
+    color: #829397;
+    font-size: 10px;
+    line-height: 1.6;
+}
+
+.details {
+    margin-top: 16px;
+    padding: 24px;
+    background: rgba(16, 25, 29, .97);
+    border: 1px solid var(--border);
+    border-radius: 13px;
+}
+
+.details-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 17px;
+}
+
+.details-heading h2 {
+    font-size: 15px;
+}
+
+.details-heading span {
+    color: var(--muted);
+    font-size: 10px;
+}
+
+.finding-item {
+    display: flex;
+    gap: 13px;
+    padding: 15px;
+    margin-top: 9px;
+    background: #162328;
+    border: 1px solid #ffffff08;
+    border-radius: 8px;
+}
+
+.finding-marker {
+    flex: 0 0 7px;
+    width: 7px;
+    height: 7px;
+    margin-top: 5px;
+    border-radius: 50%;
+    background: var(--amber);
+}
+
+.finding-item.info .finding-marker {
+    background: var(--blue);
+    box-shadow: 0 0 10px #66aaff66;
+}
+
+.finding-item.danger {
+    border-color: #ff657233;
+    background: linear-gradient(110deg, #ff65720d, #162328 55%);
+}
+
+.finding-item.danger .finding-marker {
+    background: var(--red);
+    box-shadow: 0 0 11px #ff657288;
+}
+
+.finding-item.warning .finding-marker {
+    background: var(--amber);
+    box-shadow: 0 0 10px #e8b45c66;
+}
+
+.finding-item strong {
+    display: block;
+    color: #e9c47f;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.finding-item.info strong {
+    color: var(--blue);
+}
+
+.finding-item.danger strong {
+    color: var(--red);
+}
+
+.finding-item p {
+    margin-top: 6px;
+    color: #91a4a8;
+    font-size: 11px;
+    line-height: 1.7;
+}
+
+.finding-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    margin-top: 9px;
+}
+
+.finding-location,
+.finding-level {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 4px 8px;
+    border: 1px solid #ffffff12;
+    border-radius: 4px;
+    color: #9aadb0;
+    font-size: 9px;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+}
+
+.finding-level {
+    color: var(--amber);
+    border-color: #e8b45c33;
+    background: #e8b45c0d;
+}
+
+.finding-item.danger .finding-level {
+    color: var(--red);
+    border-color: #ff657233;
+    background: #ff65720d;
+}
+
+.finding-item.info .finding-level {
+    color: var(--blue);
+    border-color: #66aaff33;
+    background: #66aaff0d;
+}
+
+.warning {
+    margin-top: 15px;
+    padding: 13px 15px;
+    border-left: 2px solid var(--blue);
+    background: #66aaff0c;
+    color: #8da5b8;
+    font-size: 10px;
+    line-height: 1.7;
+}
+
+.error-message {
+    margin-top: 12px;
+    color: var(--red);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+footer {
+    position: relative;
+    z-index: 2;
+    padding: 24px;
+    border-top: 1px solid #ffffff12;
+    text-align: center;
+    color: #53676b;
+    font-size: 10px;
+    letter-spacing: .5px;
+}
+
+@keyframes appear {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 600px) {
+    header {
+        padding: 0 20px;
+    }
+
+    main {
+        padding-top: 85px;
+    }
+
+    h1 {
+        letter-spacing: -2px;
+    }
+
+    .globe-background {
+        width: 145vw;
+        height: 145vw;
+        top: 120px;
+        transform: translateX(-30%);
+        opacity: .42;
+    }
+
+    .scanner {
+        flex-direction: column;
+    }
+
+    input {
+        padding: 16px 12px;
+    }
+
+    button {
+        min-height: 48px;
+    }
+
+    .verdict, .details {
+        padding: 19px;
+    }
+
+    .verdict-title {
+        font-size: 21px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: .01ms !important;
+        transition-duration: .01ms !important;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="globe-background">
+    <canvas id="globeCanvas"></canvas>
+</div>
+
+<header>
+    <div class="logo">Phish<span>Eye</span></div>
+    <div class="header-right">
+        <div class="status-dot"></div>
+        Analysis system
+    </div>
+</header>
+
+<main>
+    <div class="eyebrow">Machine learning · Cybersecurity</div>
+
+    <h1>Look closer.<br>Stay <span>safer.</span></h1>
+
+    <p class="intro">
+        Проверяй подозрительные ссылки с помощью машинного обучения.
+        PhishEye анализирует URL и выявляет признаки, которые могут
+        указывать на фишинг.
+    </p>
+
+    <form class="scanner" id="scanForm">
+        <input
+            type="url"
+            id="urlInput"
+            placeholder="Вставь ссылку для проверки..."
+            required
+        >
+        <button type="submit" id="scanButton">
+            Анализировать →
+        </button>
+    </form>
+
+    <div class="hint">
+        Вставь полный адрес с HTTP или HTTPS
+    </div>
+
+    <section class="result" id="result">
+        <div class="verdict">
+            <div class="verdict-top">
+                <div class="section-label">Результат модели</div>
+                <div class="verdict-badge" id="verdictBadge">АНАЛИЗ</div>
+            </div>
+
+            <div class="verdict-title" id="resultStatus"></div>
+            <div class="verdict-message" id="resultMessage"></div>
+
+            <div class="score-block">
+                <div class="score-heading">
+                    <span>Оценка фишинговой вероятности модели</span>
+                    <strong id="scoreValue">—</strong>
+                </div>
+
+                <div class="score-track">
+                    <div class="score-fill" id="scoreFill"></div>
+                </div>
+
+                <div class="score-note">
+                    Это оценка модели на основе изученных данных,
+                    а не подтверждённая вероятность мошенничества.
+                </div>
+            </div>
+        </div>
+
+        <div class="details">
+            <div class="details-heading">
+                <h2>Что обнаружено при анализе</h2>
+                <span>СТРУКТУРНЫЕ ПРИЗНАКИ</span>
+            </div>
+
+            <div id="findings"></div>
+        </div>
+
+        <div class="warning" id="warningText"></div>
+        <div class="error-message" id="errorText"></div>
+    </section>
+</main>
+
+<footer>
+    PhishEye © 2026 · URL SECURITY ANALYSIS
+</footer>
+
+<script>
+/* THREE-DIMENSIONAL NETWORK SPHERE */
+
+const canvas = document.getElementById("globeCanvas");
+const ctx = canvas.getContext("2d");
+
+let width = 0;
+let height = 0;
+let rotationY = 0;
+let rotationX = -0.18;
+let scanMode = false;
+let lastFrame = 0;
+
+const nodes = [];
+const edges = [];
+const warningNodes = [1, 3, 5, 8, 11, 13];
+
+function setupSphere() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    width = rect.width;
+    height = rect.height;
+
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    nodes.length = 0;
+    edges.length = 0;
+
+    const positions = [
+        [0.02, 0.98],
+        [0.76, 0.69],
+        [1.92, 0.77],
+        [2.81, 0.51],
+        [3.78, 0.86],
+        [4.81, 0.61],
+        [5.72, 0.34],
+        [0.49, -0.12],
+        [1.63, -0.36],
+        [2.62, -0.19],
+        [3.66, -0.48],
+        [4.74, -0.21],
+        [5.63, -0.64],
+        [0.91, -0.88],
+        [3.05, -0.91]
+    ];
+
+    positions.forEach((position, index) => {
+        const longitude = position[0];
+        const latitude = position[1];
+
+        const radius = Math.sqrt(1 - latitude * latitude);
+
+        nodes.push({
+            x: Math.cos(longitude) * radius,
+            y: latitude,
+            z: Math.sin(longitude) * radius,
+            phase: index * 1.7
+        });
+    });
+
+    // 45 unique connections.
+    const possibleEdges = [];
+
+    for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+            const dx = nodes[i].x - nodes[j].x;
+            const dy = nodes[i].y - nodes[j].y;
+            const dz = nodes[i].z - nodes[j].z;
+
+            const distance = dx * dx + dy * dy + dz * dz;
+
+            possibleEdges.push({
+                a: i,
+                b: j,
+                distance
+            });
+        }
+    }
+
+    possibleEdges.sort((a, b) => a.distance - b.distance);
+
+    const selected = [];
+
+    for (let i = 0; i < 45; i++) {
+        const poolIndex = Math.floor(
+            Math.pow(i / 44, 0.85) * (possibleEdges.length - 1)
+        );
+
+        let edge = possibleEdges[poolIndex];
+
+        while (
+            selected.some(e => e.a === edge.a && e.b === edge.b)
+        ) {
+            edge = possibleEdges[
+                Math.floor(Math.random() * possibleEdges.length)
+            ];
+        }
+
+        selected.push(edge);
+    }
+
+    selected.forEach(edge => {
+        edges.push({
+            a: edge.a,
+            b: edge.b,
+            phase: Math.random() * Math.PI * 2,
+            speed: 0.2 + Math.random() * 0.5
+        });
+    });
+}
+
+function rotatePoint(point, angleY, angleX) {
+    const cosY = Math.cos(angleY);
+    const sinY = Math.sin(angleY);
+
+    const x1 = point.x * cosY - point.z * sinY;
+    const z1 = point.x * sinY + point.z * cosY;
+
+    const cosX = Math.cos(angleX);
+    const sinX = Math.sin(angleX);
+
+    const y2 = point.y * cosX - z1 * sinX;
+    const z2 = point.y * sinX + z1 * cosX;
+
+    return {
+        x: x1,
+        y: y2,
+        z: z2
+    };
+}
+
+function project(point, radius) {
+    const perspective = 3.6 / (3.6 - point.z * 0.55);
+
+    return {
+        x: width / 2 + point.x * radius * perspective,
+        y: height / 2 + point.y * radius * perspective,
+        depth: point.z,
+        scale: perspective
+    };
+}
+
+function drawLine(a, b, color, lineWidth) {
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+}
+
+function drawWarning(point, time, index) {
+    const size = 10 * point.scale;
+    const pulse = 0.75 + Math.sin(time * 0.003 + index) * 0.15;
+
+    ctx.save();
+    ctx.translate(point.x, point.y - 13 * point.scale);
+    ctx.scale(pulse, pulse);
+
+    ctx.beginPath();
+    ctx.moveTo(0, -size);
+    ctx.lineTo(size * 0.9, size * 0.75);
+    ctx.lineTo(-size * 0.9, size * 0.75);
+    ctx.closePath();
+
+    ctx.fillStyle = "rgba(255, 75, 91, 0.95)";
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(255, 155, 160, 0.95)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `bold ${size * 1.25}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("!", 0, size * 0.1);
+
+    ctx.restore();
+}
+
+function drawSphere(time) {
+    const delta = Math.min((time - lastFrame) / 16.67 || 1, 2);
+    lastFrame = time;
+
+    ctx.clearRect(0, 0, width, height);
+
+    const radius = Math.min(width, height) * 0.39;
+
+    rotationY += (scanMode ? 0.006 : 0.0018) * delta;
+    rotationX += (scanMode ? 0.0007 : 0.00015) * delta;
+
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    const glow = ctx.createRadialGradient(
+        centerX, centerY, radius * 0.1,
+        centerX, centerY, radius * 1.3
+    );
+
+    glow.addColorStop(0, "rgba(40, 180, 165, 0.11)");
+    glow.addColorStop(0.65, "rgba(40, 180, 165, 0.035)");
+    glow.addColorStop(1, "rgba(40, 180, 165, 0)");
+
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius * 1.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    const rotated = nodes.map(node =>
+        rotatePoint(node, rotationY, rotationX)
+    );
+
+    const projected = rotated.map(point =>
+        project(point, radius)
+    );
+
+    // Sphere outline.
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(72, 222, 196, 0.22)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Three vertical and three horizontal sections.
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(rotationY * 0.35);
+
+    for (let i = 0; i < 3; i++) {
+        const angle = (i - 1) * Math.PI / 6;
+
+        ctx.beginPath();
+        ctx.ellipse(
+            0, 0,
+            radius * Math.cos(angle),
+            radius,
+            angle,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.strokeStyle = "rgba(72, 222, 196, 0.16)";
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+    }
+
+    for (let i = 0; i < 3; i++) {
+        const angle = (i - 1) * Math.PI / 6;
+
+        ctx.beginPath();
+        ctx.ellipse(
+            0, 0,
+            radius,
+            radius * Math.cos(angle),
+            angle,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.strokeStyle = "rgba(72, 222, 196, 0.16)";
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+    }
+
+    ctx.restore();
+
+    // Irregular network graph: 45 edges.
+    edges.forEach((edge, index) => {
+        const a = projected[edge.a];
+        const b = projected[edge.b];
+
+        const depth = (a.depth + b.depth) / 2;
+
+        if (depth < -0.45) return;
+
+        const pulse = (Math.sin(time * 0.001 * edge.speed + edge.phase) + 1) / 2;
+        const opacity = 0.09 + Math.max(0, depth) * 0.28 + pulse * 0.045;
+
+        drawLine(
+            a,
+            b,
+            `rgba(72, 222, 196, ${opacity})`,
+            1.1
+        );
+
+        if (index % 5 === 0 && depth > 0) {
+            const t = (time * 0.00018 * edge.speed + edge.phase) % 1;
+
+            const px = a.x + (b.x - a.x) * t;
+            const py = a.y + (b.y - a.y) * t;
+
+            ctx.beginPath();
+            ctx.arc(px, py, 1.8, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(140, 255, 230, ${opacity + 0.2})`;
+            ctx.fill();
+        }
+    });
+
+    // Nodes and warning markers.
+    projected.forEach((point, index) => {
+        if (point.depth < -0.48) return;
+
+        const pulse = (
+            Math.sin(time * 0.002 + nodes[index].phase) + 1
+        ) / 2;
+
+        const nodeRadius = (2 + pulse * 1.1) * point.scale;
+
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, nodeRadius * 4, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(72, 222, 196, 0.09)";
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, nodeRadius, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(110, 255, 226, 0.95)";
+        ctx.fill();
+
+        if (warningNodes.includes(index)) {
+            drawWarning(point, time, index);
+        }
+    });
+
+    requestAnimationFrame(drawSphere);
+}
+
+setupSphere();
+requestAnimationFrame(drawSphere);
+
+window.addEventListener("resize", setupSphere);
+
+/* URL ANALYSIS */
+
+const form = document.getElementById("scanForm");
+const input = document.getElementById("urlInput");
+const button = document.getElementById("scanButton");
+
+const result = document.getElementById("result");
+const status = document.getElementById("resultStatus");
+const message = document.getElementById("resultMessage");
+const score = document.getElementById("scoreValue");
+const scoreFill = document.getElementById("scoreFill");
+const badge = document.getElementById("verdictBadge");
+const warning = document.getElementById("warningText");
+const errorText = document.getElementById("errorText");
+const findingsContainer = document.getElementById("findings");
+
+form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const url = input.value.trim();
+
+    button.disabled = true;
+    button.textContent = "Анализируем...";
+    scanMode = true;
+
+    result.classList.remove("show");
+    errorText.textContent = "";
+
+    try {
+        const response = await fetch(
+            "http://127.0.0.1:8000/predict",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ url })
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Ошибка анализа");
+        }
+
+        const suspicious = data.status === "suspicious";
+        const probability = Math.max(
+            0,
+            Math.min(100, Number(data.phishing_probability))
+        );
+
+        status.textContent = suspicious
+            ? "Обнаружены признаки фишинга"
+            : "Признаки фишинга не обнаружены";
+
+        status.className = "verdict-title " +
+            (suspicious ? "danger" : "safe");
+
+        badge.textContent = suspicious
+            ? "ТРЕБУЕТ ВНИМАНИЯ"
+            : "НЕ ОБНАРУЖЕНО";
+
+        badge.className = "verdict-badge" +
+            (suspicious ? "" : " safe");
+
+        message.textContent = data.message;
+
+        score.textContent = probability.toFixed(2) + "%";
+
+        scoreFill.className = "score-fill" +
+            (suspicious ? "" : " safe");
+
+        scoreFill.style.width = probability + "%";
+
+        findingsContainer.replaceChildren();
+
+        (data.findings || []).forEach((finding) => {
+            const item = document.createElement("div");
+
+            const level = ["danger", "warning", "info"].includes(finding.level)
+                ? finding.level
+                : "warning";
+
+            item.className = "finding-item " + level;
+
+            const marker = document.createElement("div");
+            marker.className = "finding-marker";
+
+            const content = document.createElement("div");
+
+            const title = document.createElement("strong");
+            title.textContent = finding.title || "Обнаружена особенность";
+
+            const description = document.createElement("p");
+            description.textContent = finding.description || "";
+
+            const meta = document.createElement("div");
+            meta.className = "finding-meta";
+
+            const location = document.createElement("span");
+            location.className = "finding-location";
+            location.textContent = "Место: " + (finding.location || "URL");
+
+            const levelLabel = document.createElement("span");
+            levelLabel.className = "finding-level";
+
+            const levelNames = {
+                danger: "Повышенное внимание",
+                warning: "Предупреждение",
+                info: "Информация"
+            };
+
+            levelLabel.textContent = levelNames[level];
+
+            meta.appendChild(location);
+            meta.appendChild(levelLabel);
+
+            content.appendChild(title);
+            content.appendChild(description);
+            content.appendChild(meta);
+
+            item.appendChild(marker);
+            item.appendChild(content);
+
+            findingsContainer.appendChild(item);
+        });
+
+        warning.textContent = data.warning || "";
+
+        result.classList.add("show");
+
+    } catch (error) {
+        status.textContent = "Не удалось выполнить проверку";
+        status.className = "verdict-title danger";
+        badge.textContent = "ОШИБКА";
+        badge.className = "verdict-badge";
+
+        message.textContent = "";
+        score.textContent = "—";
+        scoreFill.style.width = "0%";
+
+        findingsContainer.replaceChildren();
+        warning.textContent = "";
+
+        errorText.textContent =
+            error.message +
+            " Проверь, что сервер PhishEye запущен.";
+
+        result.classList.add("show");
+
+    } finally {
+        button.disabled = false;
+        button.textContent = "Анализировать →";
+        scanMode = false;
+    }
+});
+</script>
+
+</body>
+</html>
