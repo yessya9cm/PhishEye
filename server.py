@@ -2,11 +2,12 @@ import json
 import joblib
 import ipaddress
 import re
-
-from http.server import SimpleHTTPRequestHandler, HTTPServer
+from flask import Flask, request, jsonify
 from urllib.parse import urlsplit, unquote
 
+app = Flask(__name__)
 
+# Загружаем модель один раз при старте функции
 print("Загружаем модель PhishEye...")
 model = joblib.load("phisheye_hybrid_model_hardnegatives.pkl")
 PHISHING_THRESHOLD = 0.80
@@ -14,12 +15,10 @@ print("Модель загружена.")
 
 def analyze_url(url):
     """Анализирует структуру URL и объясняет найденные особенности."""
-
     parts = urlsplit(url)
     host = (parts.hostname or "").lower()
     path = unquote(parts.path).lower()
     query = unquote(parts.query).lower()
-
     findings = []
 
     def add_finding(title, description, location, level="warning"):
@@ -30,321 +29,133 @@ def analyze_url(url):
             "level": level
         })
 
-    # HTTP вместо HTTPS
     if parts.scheme.lower() == "http":
-        add_finding(
-            "Нет защищённого HTTPS-соединения",
-            "Соединение использует HTTP без HTTPS-шифрования. "
-            "Это не доказывает фишинг, но требует внимания.",
-            "Протокол",
-            "warning"
-        )
+        add_finding("Нет защищённого HTTPS-соединения", "Соединение использует HTTP без HTTPS-шифрования. Это не доказывает фишинг, но требует внимания.", "Протокол", "warning")
 
-    # IP вместо доменного имени
     try:
         ipaddress.ip_address(host)
-        add_finding(
-            "Вместо домена используется IP-адрес",
-            "Адрес ведёт непосредственно на IP. Такой способ "
-            "использования не доказывает фишинг, но требует внимания.",
-            "Домен",
-            "danger"
-        )
+        add_finding("Вместо домена используется IP-адрес", "Адрес ведёт непосредственно на IP. Такой способ использования не доказывает фишинг, но требует внимания.", "Домен", "danger")
     except ValueError:
         pass
 
-    # Punycode
     if "xn--" in host:
-        add_finding(
-            "Обнаружен Punycode",
-            "Домен содержит кодированные символы. Иногда это "
-            "используется для создания адресов, похожих на известные домены.",
-            "Домен",
-            "danger"
-        )
+        add_finding("Обнаружен Punycode", "Домен содержит кодированные символы. Иногда это используется для создания адресов, похожих на известные домены.", "Домен", "danger")
 
-    # Количество частей домена
     labels = host.split(".") if host else []
-
     if len(labels) >= 4:
-        add_finding(
-            "Много уровней домена",
-            f"В адресе обнаружено {len(labels)} частей доменного имени. "
-            "Длинная цепочка поддоменов может затруднять определение "
-            "основного домена.",
-            "Домен",
-            "warning"
-        )
+        add_finding("Много уровней домена", f"В адресе обнаружено {len(labels)} частей доменного имени. Длинная цепочка поддоменов может затруднять определение основного домена.", "Домен", "warning")
 
-    # Подозрительные слова
     word_categories = {
-        "авторизация": [
-            "login", "signin", "authenticate", "password"
-        ],
-        "подтверждение данных": [
-            "verify", "confirm", "account", "update"
-        ],
-        "финансовые операции": [
-            "wallet", "banking"
-        ]
+        "авторизация": ["login", "signin", "authenticate", "password"],
+        "подтверждение данных": ["verify", "confirm", "account", "update"],
+        "финансовые операции": ["wallet", "banking"]
     }
-
-    # Проверяем слова отдельно в домене, пути и параметрах
-    locations = {
-        "домен": host,
-        "путь": path,
-        "параметры": query
-    }
-
+    locations = {"домен": host, "путь": path, "параметры": query}
     found_words = []
     found_locations = []
 
     for category, words in word_categories.items():
         for word in words:
             pattern = r"(?<![a-z0-9])" + re.escape(word) + r"(?![a-z0-9])"
-
             for location, value in locations.items():
                 if re.search(pattern, value):
                     found_words.append(word)
-
                     if location not in found_locations:
                         found_locations.append(location)
-
                     break
 
     if found_words:
         found_words = list(dict.fromkeys(found_words))
+        add_finding("Обнаружены слова, связанные с действиями пользователя", "Найдены элементы: " + ", ".join(found_words) + ". Они могут встречаться как на фишинговых, так и на обычных сайтах, поэтому сами по себе не подтверждают угрозу.", ", ".join(found_locations), "warning")
 
-        add_finding(
-            "Обнаружены слова, связанные с действиями пользователя",
-            "Найдены элементы: " + ", ".join(found_words) +
-            ". Они могут встречаться как на фишинговых, так и на обычных "
-            "сайтах, поэтому сами по себе не подтверждают угрозу.",
-            ", ".join(found_locations),
-            "warning"
-        )
-
-    # Символ @
     if "@" in parts.netloc:
-        add_finding(
-            "Символ @ в адресе",
-            "Часть адреса перед символом @ может выглядеть как домен, "
-            "хотя фактический адресат находится после него.",
-            "Адрес сервера",
-            "danger"
-        )
+        add_finding("Символ @ в адресе", "Часть адреса перед символом @ может выглядеть как домен, хотя фактический адресат находится после него.", "Адрес сервера", "danger")
 
-    # Длина URL
     if len(url) > 100:
-        add_finding(
-            "Большая длина ссылки",
-            f"URL содержит {len(url)} символов. Длинные адреса "
-            "сложнее проверять визуально.",
-            "Весь URL",
-            "info"
-        )
+        add_finding("Большая длина ссылки", f"URL содержит {len(url)} символов. Длинные адреса сложнее проверять визуально.", "Весь URL", "info")
 
-    # Цифры в домене
     digit_count = sum(char.isdigit() for char in host)
-
     if digit_count >= 5:
-        add_finding(
-            "Много цифр в доменном имени",
-            f"В домене обнаружено {digit_count} цифр. "
-            "Это может быть особенностью адреса или способом "
-            "маскировки похожего написания.",
-            "Домен",
-            "warning"
-        )
+        add_finding("Много цифр в доменном имени", f"В домене обнаружено {digit_count} цифр. Это может быть особенностью адреса или способом маскировки похожего написания.", "Домен", "warning")
 
-    # Необычный порт
     try:
         port = parts.port
-
         if port is not None and port not in (80, 443):
-            add_finding(
-                "Используется нестандартный порт",
-                f"В адресе указан порт {port}. Это не обязательно опасно, "
-                "но для обычных веб-сайтов чаще используются порты 80 и 443.",
-                "Адрес сервера",
-                "warning"
-            )
+            add_finding("Используется нестандартный порт", f"В адресе указан порт {port}. Это не обязательно опасно, но для обычных веб-сайтов чаще используются порты 80 и 443.", "Адрес сервера", "warning")
     except ValueError:
         pass
 
-    # Кодированные символы
     if re.search(r"%[0-9a-fA-F]{2}", url):
-        add_finding(
-            "В адресе есть кодированные символы",
-            "Часть URL записана в кодированном виде. Это стандартный "
-            "механизм веб-адресов, но иногда он затрудняет визуальную проверку.",
-            "Путь или параметры",
-            "info"
-        )
+        add_finding("В адресе есть кодированные символы", "Часть URL записана в кодированном виде. Это стандартный механизм веб-адресов, но иногда он затрудняет визуальную проверку.", "Путь или параметры", "info")
 
-    # Подозрительные расширения
-    suspicious_extensions = [
-        ".exe", ".scr", ".bat", ".cmd", ".msi", ".apk"
-    ]
-
-    found_extensions = [
-        ext for ext in suspicious_extensions
-        if path.endswith(ext)
-    ]
-
+    suspicious_extensions = [".exe", ".scr", ".bat", ".cmd", ".msi", ".apk"]
+    found_extensions = [ext for ext in suspicious_extensions if path.endswith(ext)]
     if found_extensions:
-        add_finding(
-            "Подозрительное расширение файла",
-            "Путь заканчивается на " + ", ".join(found_extensions) +
-            ". Такие расширения могут использоваться для распространения "
-            "исполняемых файлов.",
-            "Путь",
-            "danger"
-        )
+        add_finding("Подозрительное расширение файла", "Путь заканчивается на " + ", ".join(found_extensions) + ". Такие расширения могут использоваться для распространения исполняемых файлов.", "Путь", "danger")
 
     if not findings:
-        add_finding(
-            "Явные структурные признаки не найдены",
-            "Простые проверки не выявили перечисленных особенностей. "
-            "Это не подтверждает безопасность сайта.",
-            "Весь URL",
-            "info"
-        )
+        add_finding("Явные структурные признаки не найдены", "Простые проверки не выявили перечисленных особенностей. Это не подтверждает безопасность сайта.", "Весь URL", "info")
 
     return findings
 
 
-class PhishEyeHandler(SimpleHTTPRequestHandler):
+@app.route('/predict', methods=['POST'])
+def predict():
+    try:
+        body = request.get_json()
+        if not isinstance(body, dict):
+            return jsonify({"error": "Некорректный формат запроса"}), 400
 
-    def do_GET(self):
-        if self.path == "/":
-            self.path = "/index.html"
+        url = body.get("url", "")
+        if not isinstance(url, str):
+            return jsonify({"error": "Ссылка должна быть текстом"}), 400
 
-        super().do_GET()
+        url = url.strip()
+        if not url:
+            return jsonify({"error": "Введите ссылку"}), 400
 
-    def send_json(self, status_code, data):
-        response = json.dumps(
-            data, ensure_ascii=False
-        ).encode("utf-8")
+        parts = urlsplit(url)
+        if (parts.scheme not in ("http", "https") or not parts.hostname or
+            any(char.isspace() for char in url) or
+            parts.username is not None or parts.password is not None):
+            return jsonify({"error": "Некорректная HTTP(S)-ссылка"}), 400
 
-        self.send_response(status_code)
-        self.send_header(
-            "Content-Type", "application/json; charset=utf-8"
-        )
-        self.send_header("Content-Length", str(len(response)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_headers()
-        self.wfile.write(response)
+        probabilities = model.predict_proba([url])[0]
+        classes = list(model.classes_)
+        phishing_probability = float(probabilities[classes.index(0)])
 
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_headers()
+        host = (parts.hostname or "").lower()
+        is_known_google_drive = host == "drive.google.com"
 
-    def do_POST(self):
-        if self.path != "/predict":
-            self.send_json(404, {"error": "Endpoint не найден"})
-            return
+        if is_known_google_drive:
+            prediction = 1
+            status = "not_detected"
+            message = "Используется официальный домен Google Drive. Модель оценила ссылку как подозрительную, но для этого домена результат не считается фишингом."
+        elif phishing_probability >= PHISHING_THRESHOLD:
+            prediction = 0
+            status = "suspicious"
+            message = "Модель обнаружила признаки фишинга."
+        else:
+            prediction = 1
+            status = "not_detected"
+            message = "Модель не обнаружила выраженных признаков фишинга."
 
-        try:
-            length = int(self.headers.get("Content-Length", 0))
+        findings = analyze_url(url)
 
-            if length <= 0 or length > 10000:
-                raise ValueError("Некорректный размер запроса")
+        return jsonify({
+            "status": status,
+            "url": url,
+            "prediction": prediction,
+            "phishing_probability": round(phishing_probability * 100, 2),
+            "message": message,
+            "findings": findings,
+            "warning": "Оценка модели и структурные признаки не являются гарантией безопасности ссылки."
+        })
 
-            body = json.loads(self.rfile.read(length))
-
-            if not isinstance(body, dict):
-                raise ValueError("Некорректный формат запроса")
-
-            url = body.get("url", "")
-
-            if not isinstance(url, str):
-                raise ValueError("Ссылка должна быть текстом")
-
-            url = url.strip()
-
-            if not url:
-                raise ValueError("Введите ссылку")
-
-            parts = urlsplit(url)
-
-            if (
-                parts.scheme not in ("http", "https")
-                or not parts.hostname
-                or any(char.isspace() for char in url)
-                or parts.username is not None
-                or parts.password is not None
-            ):
-                raise ValueError("Некорректная HTTP(S)-ссылка")
-
-            probabilities = model.predict_proba([url])[0]
-            classes = list(model.classes_)
-
-            phishing_probability = float(
-                probabilities[classes.index(0)]
-            )
-
-            host = (parts.hostname or "").lower()
-            is_known_google_drive = host == "drive.google.com"
-
-            if is_known_google_drive:
-                prediction = 1
-                status = "not_detected"
-                message = (
-                    "Используется официальный домен Google Drive. "
-                    "Модель оценила ссылку как подозрительную, "
-                    "но для этого домена результат не считается фишингом."
-                )
-            elif phishing_probability >= PHISHING_THRESHOLD:
-                prediction = 0
-                status = "suspicious"
-                message = "Модель обнаружила признаки фишинга."
-            else:
-                prediction = 1
-                status = "not_detected"
-                message = (
-                    "Модель не обнаружила выраженных признаков фишинга."
-                )
-            findings = analyze_url(url)
-
-            self.send_json(200, {
-                "status": status,
-                "url": url,
-                "prediction": prediction,
-                "phishing_probability": round(
-                    phishing_probability * 100, 2
-                ),
-                "message": message,
-                "findings": findings,
-                "warning": (
-                    "Оценка модели и структурные признаки "
-                    "не являются гарантией безопасности ссылки."
-                )
-            })
-
-        except (ValueError, TypeError, json.JSONDecodeError) as error:
-            self.send_json(400, {"error": str(error)})
-
-        except Exception as error:
-            print("Ошибка анализа:", error)
-            self.send_json(500, {
-                "error": "Не удалось выполнить анализ ссылки."
-            })
+    except Exception as error:
+        print("Ошибка анализа:", error)
+        return jsonify({"error": "Не удалось выполнить анализ ссылки."}), 500
 
 
-server = HTTPServer(("127.0.0.1", 8000), PhishEyeHandler)
-
-print("\nPhishEye запущен!")
-print("Адрес: http://127.0.0.1:8000")
-print("Ожидание запросов...")
-
-try:
-    server.serve_forever()
-except KeyboardInterrupt:
-    print("\nСервер остановлен.")
-    server.server_close()
+# Vercel ищет переменную с именем 'app' для запуска
+# Никакого server.serve_forever() здесь быть не должно
